@@ -94,7 +94,7 @@ pub fn run(st: &mut SystemTable<Boot>) -> ! {
         let mut entries: Vec<heapless::String<64>, 128> = Vec::new();
         nori::list_root(st, |name| {
             let mut s = heapless::String::<64>::new();
-            let _ = core::fmt::Write::write_fmt(&mut s, core::format_args!("{}", name));
+            let _ = core::fmt::Write::write_fmt(&mut s, format_args!("{}", name));
             let _ = entries.push(s);
         });
         for s in entries.iter() {
@@ -320,9 +320,7 @@ fn find_program(name: &str) -> Option<&'static ProgramEntry> {
 }
 
 fn read_line_simple(st: &mut SystemTable<Boot>, buf: &mut heapless::String<256>) {
-    let _ = st.stdout().enable_cursor(false);
-    let _ = write!(st.stdout(), "");
-    let _ = write!(st.stdout(), "█");
+    let _ = st.stdout().enable_cursor(true);
     loop {
         let read_result = {
             let stdin: &mut Input = st.stdin();
@@ -334,21 +332,18 @@ fn read_line_simple(st: &mut SystemTable<Boot>, buf: &mut heapless::String<256>)
                     let c: char = c16.into();
                     match c {
                         '\r' | '\n' => {
-                            let _ = write!(st.stdout(), "\u{8}");
                             shared::console_println!(st, "");
-                            let _ = st.stdout().enable_cursor(true);
-                            let _ = write!(st.stdout(), "\u{1b}");
                             return;
                         }
                         '\u{8}' => {
                             if !buf.is_empty() {
                                 buf.pop();
-                                let _ = write!(st.stdout(), "\u{8}\u{8} \u{8}█");
+                                let _ = write!(st.stdout(), "\u{8} \u{8}");
                             }
                         }
                         _ => {
                             if buf.push(c).is_ok() {
-                                let _ = write!(st.stdout(), "\u{8}{}█", c);
+                                let _ = write!(st.stdout(), "{}", c);
                             }
                         }
                     }
@@ -377,9 +372,7 @@ fn read_line_shell(
     hist_nav: &mut Option<usize>,
     cwd: &str,
 ) {
-    let _ = st.stdout().enable_cursor(false);
-    let _ = write!(st.stdout(), "\u{1b}");
-    let _ = write!(st.stdout(), "█");
+    let _ = st.stdout().enable_cursor(true);
     loop {
         let read_result = { st.stdin().read_key() };
         match read_result {
@@ -388,26 +381,21 @@ fn read_line_shell(
                     let c: char = c16.into();
                     match c {
                         '\r' | '\n' => {
-                            let _ = write!(st.stdout(), "\u{8}");
                             shared::console_println!(st, "");
-                            let _ = st.stdout().enable_cursor(true);
-                            let _ = write!(st.stdout(), "\u{1b}");
                             return;
                         }
                         '\u{8}' => {
                             if !buf.is_empty() {
                                 buf.pop();
-                                let _ = write!(st.stdout(), "\u{8}\u{8} \u{8}█");
+                                let _ = write!(st.stdout(), "\u{8} \u{8}");
                             }
                         }
                         '\t' => {
-                            let _ = write!(st.stdout(), "\u{8}");
                             autocomplete_line(st, buf, cwd);
-                            let _ = write!(st.stdout(), "█");
                         }
                         _ => {
                             if buf.push(c).is_ok() {
-                                let _ = write!(st.stdout(), "\u{8}{}█", c);
+                                let _ = write!(st.stdout(), "{}", c);
                             }
                         }
                     }
@@ -427,13 +415,12 @@ fn read_line_shell(
                         }
                         *hist_nav = Some(idx);
                         let s = &history[history.len() - 1 - idx];
-                        let _ = write!(st.stdout(), "\u{8} ");
                         for _ in 0..buf.len() {
-                            let _ = write!(st.stdout(), "\u{8}\u{8}");
+                            let _ = write!(st.stdout(), "\u{8} \u{8}");
                         }
                         buf.clear();
                         let _ = buf.push_str(s);
-                        let _ = write!(st.stdout(), "{}█", s);
+                        let _ = write!(st.stdout(), "{}", s);
                     }
                     ScanCode::DOWN => {
                         if history.is_empty() {
@@ -443,24 +430,21 @@ fn read_line_shell(
                             None => {}
                             Some(0) => {
                                 *hist_nav = None;
-                                let _ = write!(st.stdout(), "\u{8} ");
                                 for _ in 0..buf.len() {
-                                    let _ = write!(st.stdout(), "\u{8}\u{8}");
+                                    let _ = write!(st.stdout(), "\u{8} \u{8}");
                                 }
                                 buf.clear();
-                                let _ = write!(st.stdout(), "█");
                             }
                             Some(i) => {
                                 let ni = i - 1;
                                 *hist_nav = Some(ni);
                                 let s = &history[history.len() - 1 - ni];
-                                let _ = write!(st.stdout(), "\u{8} ");
                                 for _ in 0..buf.len() {
-                                    let _ = write!(st.stdout(), "\u{8}\u{8}");
+                                    let _ = write!(st.stdout(), "\u{8} \u{8}");
                                 }
                                 buf.clear();
                                 let _ = buf.push_str(s);
-                                let _ = write!(st.stdout(), "{}█", s);
+                                let _ = write!(st.stdout(), "{}", s);
                             }
                         }
                     }

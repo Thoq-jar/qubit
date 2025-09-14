@@ -53,13 +53,18 @@ fn panic(info: &PanicInfo) -> ! {
     // Safety: `uefi::helpers::init` called in `main` before potential panics
     if let Some(mut st) = unsafe { uefi_console() } {
         let _ = st.stdout().clear();
-        let _ = core::fmt::Write::write_str(&mut st.stdout(), "KERNEL PANIC\r\n");
-        let _ = core::fmt::Write::write_fmt(&mut st.stdout(), format_args!("{}\r\n", info));
+        let _ =
+            core::fmt::Write::write_str(&mut st.stdout(), "========== KERNEL PANIC ==========\r\n");
+        let _ = core::fmt::Write::write_str(&mut st.stdout(), "A FATAL ERROR OCCURRED\r\n");
+
+        let _ =
+            core::fmt::Write::write_fmt(&mut st.stdout(), format_args!("MESSAGE: {}\r\n", info));
     } else {
         vga::clear_screen();
         vga::set_cursor_position(0, 0);
-        vga::writeln_fmt(format_args!("KERNEL PANIC"));
-        vga::writeln_fmt(format_args!("{}", info));
+        vga::writeln_fmt(format_args!("========== KERNEL PANIC =========="));
+        vga::writeln_fmt(format_args!(" FATAL ERROR OCURRED!"));
+        vga::writeln_fmt(format_args!(" MESSAGE: {}", info));
     }
     loop {}
 }

@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = ["zap", "mochi", "nori", "wasabi"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

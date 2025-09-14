@@ -1,0 +1,15 @@
+[package]
+name = "mochi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nori = { path = "../nori" }
+wasabi = { path = "../wasabi" }
+shared = { path = "../shared" }
+log = "0.4.21"
+uefi = "0.28.0"
+heapless = "0.8.0"
+
+[lib]
+crate-type = ["lib"]

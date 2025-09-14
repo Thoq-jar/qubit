@@ -1,0 +1,11 @@
+[package]
+name = "zap"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mochi = { path = "../mochi" }
+shared = { path = "../shared" }
+log = "0.4.21"
+uefi = { version = "0.28.0", features = ["logger"] }
+linked_list_allocator = "0.10.5"

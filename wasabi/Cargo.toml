@@ -1,0 +1,10 @@
+[package]
+name = "wasabi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+uefi = "0.28.0"
+
+[lib]
+crate-type = ["lib"]

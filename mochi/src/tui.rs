@@ -1,5 +1,6 @@
 use core::fmt::Write as _;
 use heapless::Vec;
+use shared::kprintln;
 use shared::store::{COMP, NAME, PREFIX, VERSION};
 use uefi::prelude::*;
 use uefi::proto::console::text::{Input, Key, ScanCode};
@@ -37,6 +38,7 @@ const COMMAND_NAMES: &[&str] = &[
     "pwd",
     "fs-handles",
     "cat",
+    "x:debug-panic",
 ];
 
 pub fn run(st: &mut SystemTable<Boot>) -> ! {
@@ -45,9 +47,8 @@ pub fn run(st: &mut SystemTable<Boot>) -> ! {
         let _ = stdout.reset(false);
         let _ = stdout.enable_cursor(true);
         let _ = stdout.clear();
-        shared::console_println!(st, "Welcome to {COMP} {NAME}!");
-        shared::console_println!(st, "You are using v{VERSION}");
-        shared::console_println!(st, "Run 'help' to get started!");
+        kprintln!(st, "{COMP} {NAME} {VERSION} tty0");
+        kprintln!(st, "Run 'help' to get started!");
     }
 
     {
@@ -72,21 +73,21 @@ pub fn run(st: &mut SystemTable<Boot>) -> ! {
     }
 
     fn cmd_programs(st: &mut SystemTable<Boot>, _args: &str) {
-        shared::console_println!(st, "Programs: {}", list_programs());
+        kprintln!(st, "Programs: {}", list_programs());
     }
 
     fn cmd_run(st: &mut SystemTable<Boot>, args: &str) {
         let name = args.trim();
         if name.is_empty() {
-            shared::console_println!(st, "Usage: run <name>");
+            kprintln!(st, "Usage: run <name>");
             return;
         }
         if let Some(p) = find_program(name) {
-            shared::console_println!(st, "Launching '{}'...", p.name);
+            kprintln!(st, "Launching '{}'...", p.name);
             (p.run)(st);
-            shared::console_println!(st, "Program '{}' exited.", p.name);
+            kprintln!(st, "Program '{}' exited.", p.name);
         } else {
-            shared::console_println!(st, "No such program: {}", name);
+            kprintln!(st, "No such program: {}", name);
         }
     }
 
@@ -98,7 +99,7 @@ pub fn run(st: &mut SystemTable<Boot>) -> ! {
             let _ = entries.push(s);
         });
         for s in entries.iter() {
-            shared::console_println!(st, "{}", s);
+            kprintln!(st, "{}", s);
         }
     }
 
@@ -110,17 +111,17 @@ pub fn run(st: &mut SystemTable<Boot>) -> ! {
                 Err(_) => 0,
             }
         };
-        shared::console_println!(st, "Filesystems found: {}", count);
+        kprintln!(st, "Filesystems found: {}", count);
     }
 
     fn cmd_pwd(st: &mut SystemTable<Boot>, _args: &str) {
-        shared::console_println!(st, "/");
+        kprintln!(st, "/");
     }
 
     fn cmd_cat(st: &mut SystemTable<Boot>, args: &str) {
         let name = args.trim();
         if name.is_empty() {
-            shared::console_println!(st, "Usage: cat <filename>");
+            kprintln!(st, "Usage: cat <filename>");
             return;
         }
 
@@ -128,7 +129,7 @@ pub fn run(st: &mut SystemTable<Boot>) -> ! {
         let c16 = match uefi::CStr16::from_str_with_buf(name, &mut wbuf) {
             Ok(s) => s,
             Err(_) => {
-                shared::console_println!(st, "Invalid filename");
+                kprintln!(st, "Invalid filename");
                 return;
             }
         };
@@ -198,27 +199,31 @@ pub fn run(st: &mut SystemTable<Boot>) -> ! {
                         _ => {}
                     }
                 }
-                shared::console_println!(st, "");
+                kprintln!(st, "");
             }
             CatOutcome::IsDir => {
-                shared::console_println!(st, "{}: is a directory", name);
+                kprintln!(st, "{}: is a directory", name);
             }
             CatOutcome::NoFs => {
-                shared::console_println!(st, "No filesystem available");
+                kprintln!(st, "No filesystem available");
             }
             CatOutcome::OpenVolumeErr => {
-                shared::console_println!(st, "Failed to open root volume");
+                kprintln!(st, "Failed to open root volume");
             }
             CatOutcome::OpenErr => {
-                shared::console_println!(st, "Cannot open: {}", name);
+                kprintln!(st, "Cannot open: {}", name);
             }
             CatOutcome::ReadErr => {
-                shared::console_println!(st, "Read error");
+                kprintln!(st, "Read error");
             }
             CatOutcome::StatErr => {
-                shared::console_println!(st, "Failed to stat file");
+                kprintln!(st, "Failed to stat file");
             }
         }
+    }
+
+    fn x_debug_panic(st: &mut SystemTable<Boot>, _args: &str) {
+        panic!("Test panic");
     }
 
     static COMMANDS: &[CommandEntry] = &[
@@ -262,6 +267,11 @@ pub fn run(st: &mut SystemTable<Boot>) -> ! {
             help: "Show file contents: cat <name>",
             run: cmd_cat,
         },
+        CommandEntry {
+            name: "x:debug-panic",
+            help: "For debugging: test panics",
+            run: x_debug_panic,
+        },
     ];
     loop {
         {
@@ -280,16 +290,16 @@ pub fn run(st: &mut SystemTable<Boot>) -> ! {
         };
 
         if cmd_name == "help" {
-            shared::console_println!(st, "Commands:");
+            kprintln!(st, "Commands:");
             for c in COMMANDS {
-                shared::console_println!(st, "  {:<12} {}", c.name, c.help);
+                kprintln!(st, "  {:<12} {}", c.name, c.help);
             }
             continue;
         }
 
         match COMMANDS.iter().find(|c| c.name == cmd_name) {
             Some(c) => (c.run)(st, args),
-            None => shared::console_println!(st, "Unknown: {} (try 'help')", cmd_name),
+            None => kprintln!(st, "Unknown: {} (try 'help')", cmd_name),
         }
 
         if history.last().map(|h| h.as_str()) != Some(s) {
@@ -332,7 +342,7 @@ fn read_line_simple(st: &mut SystemTable<Boot>, buf: &mut heapless::String<256>)
                     let c: char = c16.into();
                     match c {
                         '\r' | '\n' => {
-                            shared::console_println!(st, "");
+                            kprintln!(st, "");
                             return;
                         }
                         '\u{8}' => {
@@ -381,7 +391,7 @@ fn read_line_shell(
                     let c: char = c16.into();
                     match c {
                         '\r' | '\n' => {
-                            shared::console_println!(st, "");
+                            kprintln!(st, "");
                             return;
                         }
                         '\u{8}' => {
@@ -529,14 +539,14 @@ fn complete_from_set(
         return;
     }
 
-    shared::console_println!(st, "");
+    kprintln!(st, "");
     for (i, m) in matches.iter().enumerate() {
         if i > 0 {
             let _ = write!(st.stdout(), " ");
         }
         let _ = write!(st.stdout(), "{}", m);
     }
-    shared::console_println!(st, "");
+    kprintln!(st, "");
     let _ = write!(st.stdout(), "{}{}", cwd, PREFIX);
     let _ = write!(st.stdout(), "{}", buf.as_str());
 }
@@ -544,7 +554,7 @@ fn complete_from_set(
 fn echo_program(st: &mut SystemTable<Boot>) {
     let out = st.stdout();
     let _ = out.clear();
-    shared::console_println!(st, "Echo program. Type 'exit' to return.");
+    kprintln!(st, "Echo program. Type 'exit' to return.");
     let mut line = heapless::String::<256>::new();
     loop {
         let _ = write!(st.stdout(), "echo {} ", PREFIX);
@@ -554,14 +564,14 @@ fn echo_program(st: &mut SystemTable<Boot>) {
         if s == "exit" {
             break;
         }
-        shared::console_println!(st, "{}", s);
+        kprintln!(st, "{}", s);
     }
 }
 
 fn keys_program(st: &mut SystemTable<Boot>) {
     let out = st.stdout();
     let _ = out.clear();
-    shared::console_println!(st, "Keys demo. Press ESC to return.");
+    kprintln!(st, "Keys demo. Press ESC to return.");
 
     {
         let stdin = st.stdin();
@@ -572,13 +582,13 @@ fn keys_program(st: &mut SystemTable<Boot>) {
         match read_result {
             Ok(Some(Key::Printable(c16))) => {
                 let c: char = c16.into();
-                shared::console_println!(st, "Printable: {:?}", c);
+                kprintln!(st, "Printable: {:?}", c);
                 if c == '\u{1b}' {
                     break;
                 }
             }
             Ok(Some(Key::Special(sc))) => {
-                shared::console_println!(st, "Special: {:?}", sc);
+                kprintln!(st, "Special: {:?}", sc);
                 if sc == ScanCode::ESCAPE {
                     break;
                 }
@@ -596,8 +606,8 @@ fn keys_program(st: &mut SystemTable<Boot>) {
 fn glow_program(st: &mut SystemTable<Boot>) {
     let out = st.stdout();
     let _ = out.clear();
-    shared::console_println!(st, "glow — neovim real no clickbait");
-    shared::console_println!(st, "Type text. Commands: :q to quit.");
+    kprintln!(st, "glow — neovim real no clickbait");
+    kprintln!(st, "Type text. Commands: :q to quit.");
     {
         let stdin = st.stdin();
         let _ = stdin.reset(false);
@@ -614,11 +624,11 @@ fn glow_program(st: &mut SystemTable<Boot>) {
             match *cmd {
                 "q" | "quit" => break,
                 _ => {
-                    shared::console_println!(st, "Unknown command: :{}", cmd);
+                    kprintln!(st, "Unknown command: :{}", cmd);
                 }
             }
         } else {
-            shared::console_println!(st, "{}", s);
+            kprintln!(st, "{}", s);
         }
     }
 }

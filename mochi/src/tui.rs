@@ -370,10 +370,10 @@ fn read_line_simple(st: &mut SystemTable<Boot>, buf: &mut heapless::String<256>)
                 },
             },
             Ok(None) => {
-                let _ = st.boot_services().stall(5000);
+                let _ = st.boot_services().stall(1000);
             }
             Err(_) => {
-                let _ = st.boot_services().stall(10000);
+                let _ = st.boot_services().stall(2000);
             }
         }
     }
@@ -467,10 +467,10 @@ fn read_line_shell(
                 },
             },
             Ok(None) => {
-                let _ = st.boot_services().stall(5000);
+                let _ = st.boot_services().stall(1000);
             }
             Err(_) => {
-                let _ = st.boot_services().stall(10000);
+                let _ = st.boot_services().stall(2000);
             }
         }
     }
@@ -598,10 +598,10 @@ fn keys_program(st: &mut SystemTable<Boot>) {
                 }
             }
             Ok(None) => {
-                let _ = st.boot_services().stall(5_000);
+                let _ = st.boot_services().stall(1_000);
             }
             Err(_) => {
-                let _ = st.boot_services().stall(10_000);
+                let _ = st.boot_services().stall(2_000);
             }
         }
     }
@@ -671,8 +671,6 @@ fn zam_program(st: &mut SystemTable<Boot>) {
     let mut mouse_y = (screen_h / 2) as i32;
     let mut last_px: Option<(usize, usize)> = None;
     let mut dragging = false;
-    let mut drag_off_x = 0usize;
-    let mut drag_off_y = 0usize;
     let mut prev_left = false;
 
     let mut pointer_handle: Option<uefi::Handle> = None;
@@ -691,14 +689,14 @@ fn zam_program(st: &mut SystemTable<Boot>) {
     loop {
         if redraw_window {
             let _ = wasabi::with_gop(st.boot_services(), |gop| {
-                wasabi::fill_rect(gop, 0, 0, screen_w, screen_h, wasabi::to_color(16, 16, 20));
+                wasabi::fill_rect(gop, 0, 0, screen_w, screen_h, wasabi::to_color(48, 25, 52));
                 wasabi::fill_rect(
                     gop,
                     win_x,
                     win_y,
                     win_w,
                     win_h,
-                    wasabi::to_color(240, 240, 240),
+                    wasabi::to_color(30, 20, 32),
                 );
                 wasabi::fill_rect(
                     gop,
@@ -706,7 +704,7 @@ fn zam_program(st: &mut SystemTable<Boot>) {
                     win_y,
                     win_w,
                     title_h,
-                    wasabi::to_color(30, 30, 36),
+                    wasabi::to_color(40, 30, 42),
                 );
                 wasabi::fill_rect(
                     gop,
@@ -714,7 +712,7 @@ fn zam_program(st: &mut SystemTable<Boot>) {
                     win_y + title_h,
                     win_w - 4,
                     win_h - title_h,
-                    wasabi::to_color(12, 12, 14),
+                    wasabi::to_color(30, 20, 32),
                 );
             });
             let term_col0 = win_x / cell_w + 1;
@@ -756,22 +754,32 @@ fn zam_program(st: &mut SystemTable<Boot>) {
                                 && px < win_x + win_w
                             {
                                 dragging = true;
-                                drag_off_x = px - win_x;
-                                drag_off_y = py - win_y;
                             }
                         }
                         if prev_left && !left {
                             dragging = false;
                         }
                         if dragging {
-                            let mut nx = px.saturating_sub(drag_off_x);
-                            let mut ny = py.saturating_sub(drag_off_y);
-                            if nx + win_w > screen_w {
-                                nx = screen_w - win_w;
+                            let mut nx_i = win_x as i32 + dx * 50;
+                            let mut ny_i = win_y as i32 + dy * 50;
+
+                            if nx_i < 0 {
+                                nx_i = 0;
                             }
-                            if ny + win_h > screen_h {
-                                ny = screen_h - win_h;
+                            if ny_i < 0 {
+                                ny_i = 0;
                             }
+
+                            if (nx_i as usize) + win_w > screen_w {
+                                nx_i = (screen_w - win_w) as i32;
+                            }
+                            if (ny_i as usize) + win_h > screen_h {
+                                ny_i = (screen_h - win_h) as i32;
+                            }
+
+                            let nx = nx_i as usize;
+                            let ny = ny_i as usize;
+
                             if nx != win_x || ny != win_y {
                                 win_x = nx;
                                 win_y = ny;
@@ -786,24 +794,24 @@ fn zam_program(st: &mut SystemTable<Boot>) {
                                 && opy < win_y + win_h
                             {
                                 if opy < win_y + title_h {
-                                    wasabi::to_color(30, 30, 36)
+                                    wasabi::to_color(40, 30, 42)
                                 } else if opx >= win_x + 2
                                     && opx < win_x + win_w - 2
                                     && opy >= win_y + title_h
                                 {
-                                    wasabi::to_color(12, 12, 14)
+                                    wasabi::to_color(30, 20, 32)
                                 } else {
-                                    wasabi::to_color(240, 240, 240)
+                                    wasabi::to_color(50, 40, 52)
                                 }
                             } else {
-                                wasabi::to_color(16, 16, 20)
+                                wasabi::to_color(48, 25, 52)
                             };
                             let _ = wasabi::with_gop(st.boot_services(), |gop| {
-                                wasabi::fill_rect(gop, opx, opy, 3, 3, obg);
+                                wasabi::fill_rect(gop, opx, opy, 5, 5, obg);
                             });
                         }
                         let _ = wasabi::with_gop(st.boot_services(), |gop| {
-                            wasabi::fill_rect(gop, px, py, 3, 3, wasabi::to_color(200, 60, 60));
+                            wasabi::fill_rect(gop, px, py, 5, 5, wasabi::to_color(255, 255, 255));
                         });
                         last_px = Some((px, py));
                         prev_left = left;
@@ -867,10 +875,10 @@ fn zam_program(st: &mut SystemTable<Boot>) {
                 }
             }
             Ok(None) => {
-                let _ = st.boot_services().stall(1_000);
+                let _ = st.boot_services().stall(500);
             }
             Err(_) => {
-                let _ = st.boot_services().stall(2_000);
+                let _ = st.boot_services().stall(1_000);
             }
         }
     }

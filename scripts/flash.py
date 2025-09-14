@@ -116,12 +116,35 @@ def list_disks_linux() -> list[Disk]:
 
 
 def ensure_image(path: Path) -> None:
+    print("Building UEFI image...")
+    run(
+        ["cargo", "build", "-p", "zap", "--target", "x86_64-unknown-uefi"],
+    )
+
+    esp_dir = Path("target/esp")
+    if esp_dir.exists():
+        shutil.rmtree(esp_dir)
+
+    esp_boot_dir = esp_dir / "EFI" / "BOOT"
+    esp_boot_dir.mkdir(parents=True)
+
+    src_efi = Path("target/x86_64-unknown-uefi/debug/zap.efi")
+    dst_efi = esp_boot_dir / "BOOTX64.EFI"
+    shutil.copy2(src_efi, dst_efi)
+
+    with open(esp_dir / "startup.nsh", "wb") as f:
+        f.write(br"\EFI\BOOT\BOOTX64.EFI\r\n")
+
+    run(["qemu-img", "create", "-f", "raw", "target/esp.img", "100M"])
+    run(["mformat", "-i", "target/esp.img", "-F", "::"])
+    for item in esp_dir.iterdir():
+        run(["mcopy", "-i", "target/esp.img", "-s", str(item), "::"])
+
     if not path.exists():
         print(f"Image not found: {path}", file=sys.stderr)
-        print(
-            "Build it first (e.g., ./run.sh) so target/esp.img exists.", file=sys.stderr
-        )
+        print("Build failed, esp.img not created.", file=sys.stderr)
         sys.exit(1)
+
 
 
 def unmount_all_linux(disk: Disk) -> None:

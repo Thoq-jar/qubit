@@ -4,7 +4,6 @@ import os
 import sys
 import subprocess
 import shutil
-import json
 import re
 from pathlib import Path
 

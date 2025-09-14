@@ -27,6 +27,10 @@ const PROGRAMS: &[ProgramEntry] = &[
         name: "glow",
         run: glow_program,
     },
+    ProgramEntry {
+        name: "zam",
+        run: zam_program,
+    },
 ];
 
 const COMMAND_NAMES: &[&str] = &[
@@ -222,7 +226,7 @@ pub fn run(st: &mut SystemTable<Boot>) -> ! {
         }
     }
 
-    fn x_debug_panic(st: &mut SystemTable<Boot>, _args: &str) {
+    fn x_debug_panic(_st: &mut SystemTable<Boot>, _args: &str) {
         panic!("Test panic");
     }
 
@@ -629,6 +633,245 @@ fn glow_program(st: &mut SystemTable<Boot>) {
             }
         } else {
             kprintln!(st, "{}", s);
+        }
+    }
+}
+
+fn zam_program(st: &mut SystemTable<Boot>) {
+    let _ = st.stdout().clear();
+    let _ = st.stdin().reset(false);
+    let _ = st.stdout().enable_cursor(true);
+
+    let mut screen_w = 0usize;
+    let mut screen_h = 0usize;
+    let mut cell_w = 8usize;
+    let mut cell_h = 16usize;
+    let _ = wasabi::with_gop(st.boot_services(), |gop| {
+        screen_w = wasabi::width(gop);
+        screen_h = wasabi::height(gop);
+        cell_w = screen_w / 80usize;
+        cell_h = screen_h / 25usize;
+    });
+
+    let mut win_w = (screen_w * 3) / 5;
+    let mut win_h = (screen_h * 3) / 5;
+    if win_w < cell_w * 20 {
+        win_w = cell_w * 20;
+    }
+    if win_h < cell_h * 10 {
+        win_h = cell_h * 10;
+    }
+    let mut win_x = screen_w / 6;
+    let mut win_y = screen_h / 6;
+    let title_h = cell_h;
+
+    let mut line = heapless::String::<256>::new();
+    let mut cur_row = 0usize;
+    let mut mouse_x = (screen_w / 2) as i32;
+    let mut mouse_y = (screen_h / 2) as i32;
+    let mut last_px: Option<(usize, usize)> = None;
+    let mut dragging = false;
+    let mut drag_off_x = 0usize;
+    let mut drag_off_y = 0usize;
+    let mut prev_left = false;
+
+    let mut pointer_handle: Option<uefi::Handle> = None;
+    if let Ok(handles) =
+        st.boot_services()
+            .locate_handle_buffer(uefi::table::boot::SearchType::ByProtocol(
+                &uefi::proto::console::pointer::Pointer::GUID,
+            ))
+    {
+        if let Some(&ph) = handles.first() {
+            pointer_handle = Some(ph);
+        }
+    }
+
+    let mut redraw_window = true;
+    loop {
+        if redraw_window {
+            let _ = wasabi::with_gop(st.boot_services(), |gop| {
+                wasabi::fill_rect(gop, 0, 0, screen_w, screen_h, wasabi::to_color(16, 16, 20));
+                wasabi::fill_rect(
+                    gop,
+                    win_x,
+                    win_y,
+                    win_w,
+                    win_h,
+                    wasabi::to_color(240, 240, 240),
+                );
+                wasabi::fill_rect(
+                    gop,
+                    win_x,
+                    win_y,
+                    win_w,
+                    title_h,
+                    wasabi::to_color(30, 30, 36),
+                );
+                wasabi::fill_rect(
+                    gop,
+                    win_x + 2,
+                    win_y + title_h,
+                    win_w - 4,
+                    win_h - title_h,
+                    wasabi::to_color(12, 12, 14),
+                );
+            });
+            let term_col0 = win_x / cell_w + 1;
+            let term_row0 = win_y / cell_h + 2;
+            let _ = st
+                .stdout()
+                .set_cursor_position(term_col0 as usize, term_row0 as usize);
+            kprintln!(st, "zam terminal");
+            last_px = None;
+            redraw_window = false;
+        }
+
+        if let Some(ph) = pointer_handle {
+            unsafe {
+                if let Ok(mut p) = st
+                    .boot_services()
+                    .open_protocol::<uefi::proto::console::pointer::Pointer>(
+                        uefi::table::boot::OpenProtocolParams {
+                            handle: ph,
+                            agent: st.boot_services().image_handle(),
+                            controller: None,
+                        },
+                        uefi::table::boot::OpenProtocolAttributes::Exclusive,
+                    )
+                {
+                    if let Ok(Some(state)) = p.read_state() {
+                        let dx = state.relative_movement[0] as i32;
+                        let dy = state.relative_movement[1] as i32;
+                        mouse_x = (mouse_x + dx).max(0).min(screen_w.saturating_sub(1) as i32);
+                        mouse_y = (mouse_y + dy).max(0).min(screen_h.saturating_sub(1) as i32);
+                        let left = state.button[0];
+                        let px = (mouse_x as usize).min(screen_w.saturating_sub(1));
+                        let py = (mouse_y as usize).min(screen_h.saturating_sub(1));
+
+                        if left && !prev_left {
+                            if py >= win_y
+                                && py < win_y + title_h
+                                && px >= win_x
+                                && px < win_x + win_w
+                            {
+                                dragging = true;
+                                drag_off_x = px - win_x;
+                                drag_off_y = py - win_y;
+                            }
+                        }
+                        if prev_left && !left {
+                            dragging = false;
+                        }
+                        if dragging {
+                            let mut nx = px.saturating_sub(drag_off_x);
+                            let mut ny = py.saturating_sub(drag_off_y);
+                            if nx + win_w > screen_w {
+                                nx = screen_w - win_w;
+                            }
+                            if ny + win_h > screen_h {
+                                ny = screen_h - win_h;
+                            }
+                            if nx != win_x || ny != win_y {
+                                win_x = nx;
+                                win_y = ny;
+                                redraw_window = true;
+                            }
+                        }
+
+                        if let Some((opx, opy)) = last_px {
+                            let obg = if opx >= win_x
+                                && opx < win_x + win_w
+                                && opy >= win_y
+                                && opy < win_y + win_h
+                            {
+                                if opy < win_y + title_h {
+                                    wasabi::to_color(30, 30, 36)
+                                } else if opx >= win_x + 2
+                                    && opx < win_x + win_w - 2
+                                    && opy >= win_y + title_h
+                                {
+                                    wasabi::to_color(12, 12, 14)
+                                } else {
+                                    wasabi::to_color(240, 240, 240)
+                                }
+                            } else {
+                                wasabi::to_color(16, 16, 20)
+                            };
+                            let _ = wasabi::with_gop(st.boot_services(), |gop| {
+                                wasabi::fill_rect(gop, opx, opy, 3, 3, obg);
+                            });
+                        }
+                        let _ = wasabi::with_gop(st.boot_services(), |gop| {
+                            wasabi::fill_rect(gop, px, py, 3, 3, wasabi::to_color(200, 60, 60));
+                        });
+                        last_px = Some((px, py));
+                        prev_left = left;
+                    }
+                }
+            }
+        }
+
+        let read_result = { st.stdin().read_key() };
+        match read_result {
+            Ok(Some(Key::Printable(c16))) => {
+                let c: char = c16.into();
+                match c {
+                    '\u{1b}' => break,
+                    '\r' | '\n' => {
+                        cur_row += 1;
+                        let max_rows = (win_h - title_h - 4) / cell_h;
+                        if cur_row >= max_rows {
+                            cur_row = max_rows.saturating_sub(1);
+                        }
+                        let _ = st
+                            .stdout()
+                            .set_cursor_position(win_x / cell_w + 1, win_y / cell_h + 2 + cur_row);
+                        kprintln!(st, "");
+                        line.clear();
+                    }
+                    '\u{8}' => {
+                        if !line.is_empty() {
+                            line.pop();
+                            let _ = st.stdout().set_cursor_position(
+                                win_x / cell_w + 1,
+                                win_y / cell_h + 2 + cur_row,
+                            );
+                            let mut s = heapless::String::<256>::new();
+                            let _ = s.push_str(line.as_str());
+                            let mut rem = ((win_w - 4) / cell_w).saturating_sub(s.len());
+                            while rem > 0 {
+                                let _ = s.push(' ');
+                                rem -= 1;
+                            }
+                            let _ = write!(st.stdout(), "{}", s.as_str());
+                            let _ = st.stdout().set_cursor_position(
+                                win_x / cell_w + 1 + line.len(),
+                                win_y / cell_h + 2 + cur_row,
+                            );
+                        }
+                    }
+                    _ => {
+                        if line.len() + 1 >= ((win_w - 4) / cell_w) {
+                            continue;
+                        }
+                        if line.push(c).is_ok() {
+                            let _ = write!(st.stdout(), "{}", c);
+                        }
+                    }
+                }
+            }
+            Ok(Some(Key::Special(sc))) => {
+                if sc == ScanCode::ESCAPE {
+                    break;
+                }
+            }
+            Ok(None) => {
+                let _ = st.boot_services().stall(1_000);
+            }
+            Err(_) => {
+                let _ = st.boot_services().stall(2_000);
+            }
         }
     }
 }

@@ -24,9 +24,13 @@ where
 
 pub fn clear(gop: &mut GraphicsOutput, color: u32) {
     let (width, height) = gop.current_mode_info().resolution();
+    let stride = gop.current_mode_info().stride();
+    let mut framebuffer = gop.frame_buffer();
     for y in 0..height {
+        let row_off = y * stride * 4;
         for x in 0..width {
-            draw_pixel(gop, x, y, color);
+            let off = row_off + x * 4;
+            unsafe { framebuffer.write_value(off, color) };
         }
     }
 }
@@ -42,6 +46,24 @@ pub fn draw_pixel(gop: &mut GraphicsOutput, x: usize, y: usize, color: u32) {
     let offset = (y * stride + x) * 4;
     unsafe {
         framebuffer.write_value(offset, color);
+    }
+}
+
+pub fn fill_rect(gop: &mut GraphicsOutput, x: usize, y: usize, w: usize, h: usize, color: u32) {
+    let (sw, sh) = gop.current_mode_info().resolution();
+    if x >= sw || y >= sh || w == 0 || h == 0 { return; }
+    let max_w = sw - x;
+    let max_h = sh - y;
+    let w = w.min(max_w);
+    let h = h.min(max_h);
+    let stride = gop.current_mode_info().stride();
+    let mut fb = gop.frame_buffer();
+    let start = y * stride + x;
+    for row in 0..h {
+        let base = (start + row * stride) * 4;
+        for col in 0..w {
+            unsafe { fb.write_value(base + col * 4, color) };
+        }
     }
 }
 
